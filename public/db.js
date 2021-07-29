@@ -12,12 +12,19 @@ request.onupgradeneeded = ({ target }) => {
     objectStore.createIndex('nameIndex', 'name');
     objectStore.createIndex('valueIndex', 'value');
     objectStore.createIndex('dateIndex', 'date');
+};
 
-}
+
+
 
 // here we manipulate the data of the database and perform any transaction on the database when it's fully loaded.
 request.onsuccess = () => {
     console.log('Created IDB', request.result);
+
+    // transaction allows us to get data from the objectStore 'BudgerStore'
+    const db = request.result;
+    const transaction = db.transaction(['BudgetStore'], "readwrite");
+    const objectStore = transaction.objectStore('BudgetStore');
 };
 
 
