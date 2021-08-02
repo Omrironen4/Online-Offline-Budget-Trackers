@@ -1,31 +1,86 @@
-/* IndexedDB is a database that lives on the browser and is capable of storing larger amounts of data than local storage or cookies. */
-let db; 
+/* IndexedDB script handles saving transactions when fetch request fails or device is offline */
 
+// Opens database with version 1
+let db;
 const request = indexedDB.open('BudgetDB', 1);
 
-// here we create the tables in our database. Target is our database, and db is getting the target(database) result. 
-// onupgradeneeded will shape the look of our database (we set up object stores and indexes here which will be utilized in order to diverse the database)
-request.onupgradeneeded = ({ target }) => {
-    db = target.result;
-    // The createObjectStore() method of the IDBDatabase interface creates and returns a new object store or index. The method takes the name of the store as well as a parameter object that lets you define important optional properties. You can use the property to uniquely identify individual objects in the store. As the property is an identifier, it should be unique to every object, and every object should have that property.
-    const objectStore = db.createObjectStore('BudgetStore');
-    objectStore.createIndex('nameIndex', 'name');
-    objectStore.createIndex('valueIndex', 'value');
-    objectStore.createIndex('dateIndex', 'date');
+// create object store called "BudgetStore" and set autoIncrement to true
+request.onupgradeneeded = () => {
+  db = request.result;
+  const objectStore = db.createObjectStore('BudgetStore', {autoIncrement: true});
 };
 
-
-
-
-// here we manipulate the data of the database and perform any transaction on the database when it's fully loaded.
+// Checks the db once the app is online
 request.onsuccess = () => {
-    console.log('Created IDB', request.result);
+  db = request.result;
 
-    // transaction allows us to get data from the objectStore 'BudgerStore'
-    const db = request.result;
-    const transaction = db.transaction(['BudgetStore'], "readwrite");
-    const objectStore = transaction.objectStore('BudgetStore');
+  if (navigator.onLine) {
+    checkDB();
+  }
 };
 
+// If there was an error opening the db
+request.onerror = () => {
+  console.log(event);
+};
 
+// Saves the transaction to the indexedDB
+const saveRecord = (record) => {
+  // Creates a transaction on the pending db with readwrite access
+  // Creates an object store on the transaction
+  // Add record to the store
+  const tx = db.transaction('BudgetStore', 'readwrite');
+  const objectStore = tx.objectStore('BudgetStore');
+  let addRequest = objectStore.add(record);
 
+  addRequest.onsuccess = () => {
+    console.log('Record added successfully');
+  }
+
+  addRequest.onerror = () => {
+    console.log("Failed to add record");
+  }
+}
+
+// Access the store, retrieves all data
+const checkDB = () => {
+  const tx = db.transaction('BudgetStore', 'readonly');
+  const objectStore = tx.objectStore('BudgetStore'); 
+  let getAll = objectStore.getAll();
+
+  getAll.onerror = () => {
+    console.log('There was an error with getting all records.');
+  }
+
+// If there are records in the db, post it to the server
+  getAll.onsuccess = () => {
+    if (getAll.result.length > 0) {
+      fetch('/api/transaction/bulk', {
+        method: 'POST',
+        body: JSON.stringify(getAll.result),
+        headers: {
+          Accept: 'application/json, text/plain, */*',
+          'Content-Type': 'application/json',
+        },
+      })
+        .then((response) => response.json())
+        .then(() => {
+          // Clear all items in the store after successful post
+          const tx = db.transaction('BudgetStore', 'readwrite');
+          const objectStore = tx.objectStore('BudgetStore');
+          let clearRequest = objectStore.clear();
+
+          clearRequest.onsuccess = () => {
+            console.log("IndexedDB cleared!");
+          }
+
+          clearRequest.onerror = () => {
+            console.log("There was an error in clearing the db!");
+          }
+        });
+    }
+  };
+}
+
+// Checks the db for data when the device goes online
+window.addEventListener('online', checkDB);
